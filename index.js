@@ -43,8 +43,8 @@ var refreshPosts;
         ]);
         console.log(await ig.challenge.sendSecurityCode(code));
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
-        refreshStories = schedule.scheduleJob('30 * * * *', checkStories);
-        refreshPosts = schedule.scheduleJob('45 0 * * *', checkPosts);
+        refreshStories = schedule.scheduleJob('55 * * * *', checkStories);
+        refreshPosts = schedule.scheduleJob('00 1 * * *', checkPosts);
     });
 
 })();
