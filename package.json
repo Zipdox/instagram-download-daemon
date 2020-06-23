@@ -1,0 +1,19 @@
+{
+  "name": "instagram-archiver",
+  "version": "0.1.0",
+  "description": "Application that archives all instagram posts from accounts you follow.",
+  "main": "index.js",
+  "dependencies": {
+    "bluebird": "^3.7.2",
+    "inquirer": "^7.0.3",
+    "instagram-private-api": "^1.37.1",
+    "node-fetch": "^2.6.0",
+    "node-schedule": "^1.3.2"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "start": "node index.js"
+  },
+  "author": "Zipdox",
+  "license": "GPL-2.0"
+}
