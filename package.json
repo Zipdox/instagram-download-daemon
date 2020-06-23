@@ -1,7 +1,7 @@
 {
-  "name": "instagram-archiver",
+  "name": "instagram-download-daemon",
   "version": "0.1.0",
-  "description": "Application that archives all instagram posts from accounts you follow.",
+  "description": "Application that downloads instagram posts and stories from people you follow automatically.",
   "main": "index.js",
   "dependencies": {
     "bluebird": "^3.7.2",

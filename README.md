@@ -1,10 +1,10 @@
-# Instagram Archiver
-A nodejs application that archives all instagram posts from accounts you follow.
+# Instagram Download Daemon
+A nodejs application that downloads instagram posts and stories from people you follow automatically.
 # Installation
 If you haven't already, download and install [nodejs](https://nodejs.org/en/download/).
 ```bash
-git clone https://github.com/Zipdox/instagram-archiver.git
-cd instagram-archiver
+git clone https://github.com/Zipdox/instagram-download-daemon.git
+cd instagram-download-daemon
 npm install
 ```
 # Running
