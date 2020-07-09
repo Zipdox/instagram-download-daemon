@@ -45,13 +45,36 @@ var refreshPosts;
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
         refreshStories = schedule.scheduleJob('50 * * * *', checkStories);
         refreshPosts = schedule.scheduleJob('00 22 * * *', checkPosts);
+        refreshPosts = schedule.scheduleJob('00 12 * * *', checkPosts);
     });
 
 })();
 
 
+async function checkHighlights(fireDate){
+    console.log('Checking highlights, scheduled for', fireDate);
+    const accountsFollowing = await getAllFollowing();
+    for(account of accountsFollowing){
+        console.log('Gathering posts from', account.username);
+        const allHighlights = await getAllHighlights(account.pk).catch(err => {
+            console.error('Error getting highlights for', account.username);
+        });
+        for (mediaInfo of allHighlights) {
+            await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/`, {recursive: true}).catch(err => {return});
+            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/${account.username}`, '').catch(err => {return});
+            let savedUserPosts = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
+            if(savedUserPosts.includes(`${mediaInfo.pk}`)) continue;
+            await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/`, {recursive: true}).catch(err => {return});
+            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo, null, 4)).catch(err => {console.error(err)});
+            let media = await fetchMedia(mediaInfo);
+            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/${media.filename}`, media.data).catch(err => {console.error(err)});
+            console.log('Downloaded highlight', mediaInfo.pk, 'from', account.username);
+        }
+    }
+}
+
 async function checkStories(fireDate){
-    console.log('Checking stories, schedules for', fireDate);
+    console.log('Checking stories, scheduled for', fireDate);
     const allStories = await getAllStories();
     for ({media_ids} of allStories) {
         for(media_id of media_ids){
@@ -65,7 +88,7 @@ async function checkStories(fireDate){
             let savedUserPosts = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
             if(savedUserPosts.includes(`${mediaInfo.pk}`)) continue;
             await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/`, {recursive: true}).catch(err => {return});
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo)).catch(err => {console.error(err)});
+            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo, null, 4)).catch(err => {console.error(err)});
             let media = await fetchMedia(mediaInfo);
             await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/${media.filename}`, media.data).catch(err => {console.error(err)});
             console.log('Downloaded story', mediaInfo.pk, 'from', mediaInfo.user.username);
@@ -74,7 +97,7 @@ async function checkStories(fireDate){
 }
 
 async function checkPosts(fireDate){
-    console.log('Checking posts, schedules for', fireDate);
+    console.log('Checking posts, scheduled for', fireDate);
     const accountsFollowing = await getAllFollowing();
     for(account of accountsFollowing){
         await fs.promises.mkdir(`download/${account.pk}/posts/`, {recursive: true}).catch(err => {return});
@@ -165,6 +188,26 @@ function getAllStories(){
             },
             complete() {
                 resolve(allStories);
+            },
+        });
+    });
+}
+
+function getAllHighlights(pk){
+    return new Promise(async (resolve, reject) => {
+        const userHighlights = await ig.highlights.highlightsTray(pk);
+        if(userHighlights.tray.length == 0) resolve([]);
+        const highlightsMedia = await ig.feed.reelsMedia({userIds: userHighlights.tray.map(x => x.id)});
+        const allHighlights = [];
+        highlightsMedia.items$.subscribe({
+            next(currentHighlight) {
+                allHighlights.push(...currentHighlight);
+            },
+            error(e) {
+                reject(e);
+            },
+            complete() {
+                resolve(allHighlights);
             },
         });
     });
