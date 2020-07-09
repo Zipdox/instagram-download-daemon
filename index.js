@@ -62,8 +62,8 @@ async function checkHighlights(fireDate){
         for (mediaInfo of allHighlights) {
             await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/`, {recursive: true}).catch(err => {return});
             await fs.promises.writeFile(`download/${mediaInfo.user.pk}/${account.username}`, '').catch(err => {return});
-            let savedUserPosts = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
-            if(savedUserPosts.includes(`${mediaInfo.pk}`)) continue;
+            let savedUserHighlights = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
+            if(savedUserHighlights.includes(`${mediaInfo.pk}`)) continue;
             await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/`, {recursive: true}).catch(err => {return});
             await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo, null, 4)).catch(err => {console.error(err)});
             let media = await fetchMedia(mediaInfo);
@@ -85,8 +85,8 @@ async function checkStories(fireDate){
             mediaInfo = mediaInfo.items[0]
             await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/`, {recursive: true}).catch(err => {return});
             await fs.promises.writeFile(`download/${mediaInfo.user.pk}/${mediaInfo.user.username}`, '').catch(err => {return});
-            let savedUserPosts = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
-            if(savedUserPosts.includes(`${mediaInfo.pk}`)) continue;
+            let savedUserStories = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
+            if(savedUserStories.includes(`${mediaInfo.pk}`)) continue;
             await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/`, {recursive: true}).catch(err => {return});
             await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo, null, 4)).catch(err => {console.error(err)});
             let media = await fetchMedia(mediaInfo);
