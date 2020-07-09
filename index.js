@@ -11,6 +11,7 @@ var ig;
 
 var refreshStories;
 var refreshPosts;
+var refreshHighlights;
 
 (async () => {
     const {igUser} = await inquirer.prompt([{
@@ -45,7 +46,7 @@ var refreshPosts;
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
         refreshStories = schedule.scheduleJob('50 * * * *', checkStories);
         refreshPosts = schedule.scheduleJob('00 22 * * *', checkPosts);
-        refreshPosts = schedule.scheduleJob('00 12 * * *', checkHighlights);
+        refreshHighlights = schedule.scheduleJob('00 20 * * *', checkHighlights);
     });
 
 })();
