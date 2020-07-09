@@ -45,7 +45,7 @@ var refreshPosts;
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
         refreshStories = schedule.scheduleJob('50 * * * *', checkStories);
         refreshPosts = schedule.scheduleJob('00 22 * * *', checkPosts);
-        refreshPosts = schedule.scheduleJob('00 12 * * *', checkPosts);
+        refreshPosts = schedule.scheduleJob('00 12 * * *', checkHighlights);
     });
 
 })();
