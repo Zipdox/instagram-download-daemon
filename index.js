@@ -45,7 +45,7 @@ var refreshHighlights;
         console.log(await ig.challenge.sendSecurityCode(code));
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
         refreshStories = schedule.scheduleJob('50 */6 * * *', checkStories);
-        refreshPosts = schedule.scheduleJob('00 22 * * *', checkPosts);
+        refreshPosts = schedule.scheduleJob('00 */12 * * *', checkPosts);
         refreshHighlights = schedule.scheduleJob('00 20 * * *', checkHighlights);
     });
 
@@ -56,7 +56,18 @@ async function checkHighlights(fireDate){
     console.log('Checking highlights, scheduled for', fireDate);
     const accountsFollowing = await getAllFollowing();
     for(account of accountsFollowing){
-        console.log('Gathering posts from', account.username);
+        console.log('Gathering highlights from', account.username);
+
+        await fs.promises.mkdir(`download/${account.pk}`, {recursive: true}).catch(err => {return});
+        await fs.promises.writeFile(`download/${account.pk}/${account.username}`, '').catch(err => {return});
+
+        const {hd_profile_pic_url_info, profile_pic_id} = await ig.user.info(account.pk);
+        let pfpSaved = await fs.promises.readFile(`download/${account.pk}/${profile_pic_id}.jpg`).catch(err => {});
+        if(pfpSaved == undefined){
+            let pfpMedia = await fetchRawMedia(hd_profile_pic_url_info.url); 
+            await fs.promises.writeFile(`download/${account.pk}/${profile_pic_id}.jpg`, pfpMedia).catch(err => {return});
+        }
+
         const allHighlights = await getAllHighlights(account.pk).catch(err => {
             console.error('Error getting highlights for', account.username);
         });
@@ -214,6 +225,28 @@ function getAllHighlights(pk){
     });
 }
 
+function fetchRawMedia(url){
+    return new Promise(
+        async (resolve, reject) => {
+            const mediaResponse = await fetch(url, {
+                headers: {
+                    'Accept-Encoding': 'gzip',
+                    'Connection': 'close',
+                    'X-FB-HTTP-Engine': 'Liger',
+                    'User-Agent': ig.state.appUserAgent
+                },
+                redirect: 'follow'
+            }).catch(err => {
+                if(err) reject(err);
+            });
+            const media = await mediaResponse.buffer().catch(err => {
+                reject(err);
+            });
+            resolve(media);
+        }
+    );
+}
+
 function fetchMedia(media){
     var url;
     var filename;
@@ -231,20 +264,7 @@ function fetchMedia(media){
     }
     return new Promise(
         async (resolve, reject) => {
-            const mediaResponse = await fetch(url, {
-                headers: {
-                    'Accept-Encoding': 'gzip',
-                    'Connection': 'close',
-                    'X-FB-HTTP-Engine': 'Liger',
-                    'User-Agent': ig.state.appUserAgent
-                },
-                redirect: 'follow'
-            }).catch(err => {
-                if(err) reject(err);
-            });
-            const media = await mediaResponse.buffer().catch(err => {
-                reject(err);
-            });
+            const media = await fetchRawMedia(url);
             resolve({filename: filename, data: media});
         }
     );
