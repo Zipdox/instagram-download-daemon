@@ -122,7 +122,7 @@ async function checkPosts(fireDate){
         
         switch(userPosts.length){
             case 0:
-                console.log(account.username, 'has 0 posts');
+                console.log(account.username, 'has no posts');
                 break;
             case 1:
                 console.log('Saving', userPosts.length, 'post from', account.username);
