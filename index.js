@@ -4,6 +4,7 @@ const inquirer = require('inquirer');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const schedule = require('node-schedule');
+const cron = require('./cron.json');
 
 if (!fs.existsSync('download/')) fs.mkdirSync('download');
 
@@ -44,9 +45,9 @@ var refreshHighlights;
         ]);
         console.log(await ig.challenge.sendSecurityCode(code));
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
-        refreshStories = schedule.scheduleJob('0 7,12,18,21,2 * * *', checkStories);
-        refreshPosts = schedule.scheduleJob('0 22 * * *', checkPosts);
-        refreshHighlights = schedule.scheduleJob('0 0 * * *', checkHighlights);
+        refreshStories = schedule.scheduleJob(cron.stories, checkStories);
+        refreshPosts = schedule.scheduleJob(cron.posts, checkPosts);
+        refreshHighlights = schedule.scheduleJob(cron.highlights, checkHighlights);
     });
 
 })();
@@ -61,16 +62,21 @@ async function checkHighlights(fireDate){
         await fs.promises.mkdir(`download/${account.pk}`, {recursive: true}).catch(err => {return});
         await fs.promises.writeFile(`download/${account.pk}/${account.username}`, '').catch(err => {return});
 
-        const {hd_profile_pic_url_info, profile_pic_id} = await ig.user.info(account.pk);
-        let pfpSaved = await fs.promises.readFile(`download/${account.pk}/${profile_pic_id}.jpg`).catch(err => {});
-        if(pfpSaved == undefined){
-            let pfpMedia = await fetchRawMedia(hd_profile_pic_url_info.url); 
-            await fs.promises.writeFile(`download/${account.pk}/${profile_pic_id}.jpg`, pfpMedia).catch(err => {return});
+        var allHighlights = undefined;
+        var errorCount = 0;
+        while(allHighlights == undefined){
+            allHighlights = await getAllHighlights(account.pk).catch(err => {
+                console.error('Error getting highlights for', account.username, ':\n', err);
+                errorCount++;
+            });
+            if(errorCount > 3) break;
+            if(allHighlights == undefined) await asyncDelay(errorCount*60000);
+        }
+        if(errorCount > 3){
+            console.error("Too many errors getting highlights from", account.username);
+            break;
         }
 
-        const allHighlights = await getAllHighlights(account.pk).catch(err => {
-            console.error('Error getting highlights for', account.username);
-        });
         for (mediaInfo of allHighlights) {
             await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/`, {recursive: true}).catch(err => {return});
             await fs.promises.writeFile(`download/${mediaInfo.user.pk}/${account.username}`, '').catch(err => {return});
@@ -114,6 +120,27 @@ async function checkPosts(fireDate){
     for(account of accountsFollowing){
         await fs.promises.mkdir(`download/${account.pk}/posts/`, {recursive: true}).catch(err => {return});
         await fs.promises.writeFile(`download/${account.pk}/${account.username}`, '').catch(err => {return});
+
+        var hd_profile_pic_url_info = undefined;
+        var profile_pic_id;
+        var profile_pk;
+        await ig.user.info(account.pk).then((userInfo)=>{
+            hd_profile_pic_url_info = userInfo.hd_profile_pic_url_info;
+            profile_pic_id = userInfo.profile_pic_id;
+            profile_pk = userInfo.pk;
+        }).catch(async function(){
+            console.error('Error profile info for', account.username)
+        });
+
+        if(account.pk == profile_pk){ // attempt to mitigate a weird glitch where it saves the profile picture in the wrong user folder
+            const pfpSaved = await fs.promises.readFile(`download/${account.pk}/${profile_pic_id}.jpg`).catch(err => {});
+            if(pfpSaved == undefined){
+                const pfpMedia = await fetchRawMedia(hd_profile_pic_url_info.url); 
+                await fs.promises.writeFile(`download/${account.pk}/${profile_pic_id}.jpg`, pfpMedia).catch(err => {return});
+            }
+        }
+        
+
         console.log('Gathering posts from', account.username);
         const userPosts = await getAllPosts(account.pk).catch(err => {
             console.error('Error getting posts for', account.username);
@@ -207,7 +234,9 @@ function getAllStories(){
 
 function getAllHighlights(pk){
     return new Promise(async (resolve, reject) => {
-        const userHighlights = await ig.highlights.highlightsTray(pk);
+        const userHighlights = await ig.highlights.highlightsTray(pk).catch((reason)=>{
+            reject(reason);
+        });
         if(userHighlights.tray.length == 0) resolve([]);
         const highlightsMedia = await ig.feed.reelsMedia({userIds: userHighlights.tray.map(x => x.id)});
         const allHighlights = [];
@@ -268,4 +297,10 @@ function fetchMedia(media){
             resolve({filename: filename, data: media});
         }
     );
-} 
+}
+
+function asyncDelay(msecs){
+    return new Promise((resolve)=>{
+        setTimeout(resolve, msecs);
+    });
+}
