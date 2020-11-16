@@ -142,7 +142,8 @@ async function checkPosts(fireDate){
         
 
         console.log('Gathering posts from', account.username);
-        const userPosts = await getAllPosts(account.pk).catch(err => {
+        var userPosts = undefined;
+        userPosts = await getAllPosts(account.pk).catch(err => {
             console.error('Error getting posts for', account.username);
         });
         let savedPosts = await fs.promises.readdir(`download/${account.pk}/posts/`);
