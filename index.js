@@ -133,7 +133,7 @@ async function checkPosts(fireDate){
                 console.error("Too many errors getting profile picture for", account.username);
                 break;
             }
-            if(userInfo == undefined) await asyncDelay(errorCount*60000+60000);
+            if(userInfo == undefined) await asyncDelay(errorCount*60000+120000);
         }
 
 
