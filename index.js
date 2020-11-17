@@ -121,12 +121,12 @@ async function checkPosts(fireDate){
         await fs.promises.mkdir(`download/${account.pk}/posts/`, {recursive: true}).catch(err => {return});
         await fs.promises.writeFile(`download/${account.pk}/${account.username}`, '').catch(err => {return});
 
-        console.log(account.username);
+        console.log('Gathering posts from', account.username);
         var userInfo = undefined;
         var errorCount = 0;
         while(userInfo == undefined){
             userInfo = await ig.user.info(account.pk).catch(function(err){
-                console.error('Error getting profile picture for', account.username, ':', err);
+                console.error('Error getting profile picture for', account.username);
                 errorCount++;
             });
             if(errorCount > 3){
@@ -137,7 +137,7 @@ async function checkPosts(fireDate){
         }
 
 
-        if(userInfo != undefined) if(account.pk == userInfo.pk && userInfo.hd_profile_pic_url_info != undefined){ // attempt to mitigate a weird glitch where it saves the profile picture in the wrong user folder
+        if(userInfo != undefined) if(account.pk == userInfo.pk && userInfo.hd_profile_pic_url_info != undefined){
             const pfpSaved = await fs.promises.readFile(`download/${account.pk}/${userInfo.profile_pic_id}.jpg`).catch(err => {});
             if(pfpSaved == undefined){
                 const pfpMedia = await fetchRawMedia(userInfo.hd_profile_pic_url_info.url);
@@ -145,7 +145,6 @@ async function checkPosts(fireDate){
             }
         }
 
-        console.log('Gathering posts from', account.username);
         var userPosts = undefined;
         userPosts = await getAllPosts(account.pk).catch(err => {
             console.error('Error getting posts for', account.username);
