@@ -4,9 +4,9 @@ const inquirer = require('inquirer');
 const fs = require('fs');
 const fetch = require('node-fetch');
 const schedule = require('node-schedule');
-const cron = require('./cron.json');
+const config = require('./config.json');
 
-if (!fs.existsSync('download/')) fs.mkdirSync('download');
+const downloadDir = 'download';
 
 var ig;
 
@@ -45,49 +45,19 @@ var refreshHighlights;
         ]);
         console.log(await ig.challenge.sendSecurityCode(code));
     }).catch(e => console.log('Could not resolve checkpoint:', e, e.stack)).then(async () => {
-        refreshStories = schedule.scheduleJob(cron.stories, checkStories);
-        refreshPosts = schedule.scheduleJob(cron.posts, checkPosts);
-        refreshHighlights = schedule.scheduleJob(cron.highlights, checkHighlights);
+        refreshStories = schedule.scheduleJob(config.cron.stories, checkStories);
+        refreshPosts = schedule.scheduleJob(config.cron.posts, checkPosts);
+        refreshHighlights = schedule.scheduleJob(config.cron.highlights, checkHighlights);
+        checkStories();
     });
 
 })();
-
 
 async function checkHighlights(fireDate){
     console.log('Checking highlights, scheduled for', fireDate);
     const accountsFollowing = await getAllFollowing();
     for(account of accountsFollowing){
-        console.log('Gathering highlights from', account.username);
-
-        await fs.promises.mkdir(`download/${account.pk}`, {recursive: true}).catch(err => {return});
-        await fs.promises.writeFile(`download/${account.pk}/${account.username}`, '').catch(err => {return});
-
-        var allHighlights = undefined;
-        var errorCount = 0;
-        while(allHighlights == undefined){
-            allHighlights = await getAllHighlights(account.pk).catch(err => {
-                console.error('Error getting highlights for', account.username, ':\n', err);
-                errorCount++;
-            });
-            if(errorCount > 3) break;
-            if(allHighlights == undefined) await asyncDelay(errorCount*60000);
-        }
-        if(errorCount > 3){
-            console.error("Too many errors getting highlights from", account.username);
-            break;
-        }
-
-        for (mediaInfo of allHighlights) {
-            await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/`, {recursive: true}).catch(err => {return});
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/${account.username}`, '').catch(err => {return});
-            let savedUserHighlights = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
-            if(savedUserHighlights.includes(`${mediaInfo.pk}`)) continue;
-            await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/`, {recursive: true}).catch(err => {return});
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo, null, 4)).catch(err => {console.error(err)});
-            let media = await fetchMedia(mediaInfo);
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/${media.filename}`, media.data).catch(err => {console.error(err)});
-            console.log('Downloaded highlight', mediaInfo.pk, 'from', account.username);
-        }
+        await handleAccountHighlights(account).catch(err => console.error(err));
     }
 }
 
@@ -95,22 +65,7 @@ async function checkStories(fireDate){
     console.log('Checking stories, scheduled for', fireDate);
     const allStories = await getAllStories();
     for ({media_ids} of allStories) {
-        for(media_id of media_ids){
-            let mediaInfo = await ig.media.info(media_id);
-            if(mediaInfo == undefined) continue;
-            if(mediaInfo.items == undefined) continue;
-            if(mediaInfo.items[0] == undefined) continue;
-            mediaInfo = mediaInfo.items[0]
-            await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/`, {recursive: true}).catch(err => {return});
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/${mediaInfo.user.username}`, '').catch(err => {return});
-            let savedUserStories = await fs.promises.readdir(`download/${mediaInfo.user.pk}/stories/`);
-            if(savedUserStories.includes(`${mediaInfo.pk}`)) continue;
-            await fs.promises.mkdir(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/`, {recursive: true}).catch(err => {return});
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/info.json`, JSON.stringify(mediaInfo, null, 4)).catch(err => {console.error(err)});
-            let media = await fetchMedia(mediaInfo);
-            await fs.promises.writeFile(`download/${mediaInfo.user.pk}/stories/${mediaInfo.pk}/${media.filename}`, media.data).catch(err => {console.error(err)});
-            console.log('Downloaded story', mediaInfo.pk, 'from', mediaInfo.user.username);
-        }
+        await handleStory(media_ids).catch(err => console.error(err));
     }
 }
 
@@ -118,38 +73,66 @@ async function checkPosts(fireDate){
     console.log('Checking posts, scheduled for', fireDate);
     const accountsFollowing = await getAllFollowing();
     for(account of accountsFollowing){
-        await fs.promises.mkdir(`download/${account.pk}/posts/`, {recursive: true}).catch(err => {return});
-        await fs.promises.writeFile(`download/${account.pk}/${account.username}`, '').catch(err => {return});
+        await handleAccountPosts(account).catch(err => console.error(err));
+    }
+}
 
+function handleAccountHighlights(account){
+    return new Promise(async (resolve, reject) => {
+        console.log('Gathering highlights from', account.username);
+
+        const allHighlights = await getAllHighlights(account.pk).catch(err => reject(err));
+        if(!allHighlights) return;
+
+        const savedUserHighlights = await getSaved(account.pk, 'stories').catch(err => reject(err));
+        for(mediaInfo of allHighlights){
+            if(savedUserHighlights.includes(`${mediaInfo.pk}`)) continue;
+            await saveUserFile(mediaInfo.user.pk, account.username, 'stories', mediaInfo.pk, 'info.json', JSON.stringify(mediaInfo, null, 4)).catch(err => reject(err));
+            let media = await fetchMedia(mediaInfo);
+            await saveUserFile(mediaInfo.user.pk, account.username, 'stories', mediaInfo.pk, media.filename, media.data).catch(err => reject(err));
+            console.log('Downloaded highlight', mediaInfo.pk, 'from', account.username);
+            await asyncDelay(config.delays.highlight);
+        }
+        await asyncDelay(config.delays.highlightsuser);
+        resolve();
+    });
+}
+
+function handleStory(media_ids){
+    return new Promise(async (resolve, reject) => {
+        for(media_id of media_ids){
+            let mediaInfo = await ig.media.info(media_id).catch(err => reject(err));
+            if(mediaInfo == undefined) continue;
+            if(mediaInfo.items == undefined) continue;
+            if(mediaInfo.items[0] == undefined) continue;
+            mediaInfo = mediaInfo.items[0]
+            let savedUserStories = await getSaved(mediaInfo.user.pk, 'stories').catch(err => reject(err));
+            if(savedUserStories.includes(`${mediaInfo.pk}`)) continue;
+            await saveUserFile(mediaInfo.user.pk, mediaInfo.user.username, 'stories', mediaInfo.pk, 'info.json', JSON.stringify(mediaInfo, null, 4)).catch(err => reject(err));
+            let media = await fetchMedia(mediaInfo).catch(err => reject(err));
+            await saveUserFile(mediaInfo.user.pk, mediaInfo.user.username, 'stories', mediaInfo.pk, media.filename, media.data).catch(err => reject(err));
+            console.log('Downloaded story', mediaInfo.pk, 'from', mediaInfo.user.username);
+            await asyncDelay(config.delays.story);
+        }
+        resolve();
+    });
+}
+
+function handleAccountPosts(account){
+    return new Promise(async (resolve, reject) => {
         console.log('Gathering posts from', account.username);
-        var userInfo = undefined;
-        var errorCount = 0;
-        while(userInfo == undefined){
-            userInfo = await ig.user.info(account.pk).catch(function(err){
-                console.error('Error getting profile picture for', account.username);
-                errorCount++;
-            });
-            if(errorCount > 3){
-                console.error("Too many errors getting profile picture for", account.username);
-                break;
-            }
-            if(userInfo == undefined) await asyncDelay(errorCount*60000+120000);
-        }
 
-
-        if(userInfo != undefined) if(account.pk == userInfo.pk && userInfo.hd_profile_pic_url_info != undefined){
-            const pfpSaved = await fs.promises.readFile(`download/${account.pk}/${userInfo.profile_pic_id}.jpg`).catch(err => {});
-            if(pfpSaved == undefined){
+        savedPfps = await getSaved(account.pk, 'pfp').catch(err => reject(err));
+        if(!savedPfps.includes(account.profile_pic_id + '.jpg')) if(account.profile_pic_id){
+            const userInfo = await ig.user.info(account.pk).catch(err => console.error(err.name, err.message));
+            if(userInfo){
                 const pfpMedia = await fetchRawMedia(userInfo.hd_profile_pic_url_info.url);
-                await fs.promises.writeFile(`download/${account.pk}/${userInfo.profile_pic_id}.jpg`, pfpMedia).catch(err => {});
-            }
+                await saveUserFile(userInfo.pk, userInfo.username, 'pfp', false, userInfo.profile_pic_id + '.jpg', pfpMedia).catch(err => reject(err));
+            }else console.log("Can't get profile info for", account.username, "so skipping pfp download");
         }
 
-        var userPosts = undefined;
-        userPosts = await getAllPosts(account.pk).catch(err => {
-            console.error('Error getting posts for', account.username);
-        });
-        let savedPosts = await fs.promises.readdir(`download/${account.pk}/posts/`);
+        const userPosts = await getAllPosts(account.pk).catch(err => reject(err));
+        let savedPosts = await getSaved(account.pk, 'posts');
 
         switch(userPosts.length){
             case 0:
@@ -163,26 +146,60 @@ async function checkPosts(fireDate){
         }
         let postsLeft = userPosts.length;
         for(post of userPosts){
+            if(savedPosts.includes(`${post.pk}`)) continue;
+            
             process.stdout.cursorTo(0);
             if(postsLeft > 0) process.stdout.write('Posts left: ' + postsLeft);
-            if(!savedPosts.includes(`${post.pk}`)){
-                await fs.promises.mkdir(`download/${account.pk}/posts/${post.pk}/`, {recursive: true}).catch(err => {return});
-                await fs.promises.writeFile(`download/${account.pk}/posts/${post.pk}/info.json`, JSON.stringify(post, null, 4)).catch(err => {console.error(err)});
-                if(post.image_versions2 != undefined){
-                    let postMedia = await fetchMedia(post);
-                    await fs.promises.writeFile(`download/${account.pk}/posts/${post.pk}/${postMedia.filename}`, postMedia.data).catch(err => {console.error(err)});
-                }else if(post.carousel_media != undefined){
-                    for(postPart of post.carousel_media){
-                        let postMedia = await fetchMedia(postPart);
-                        await fs.promises.writeFile(`download/${account.pk}/posts/${post.pk}/${postMedia.filename}`, postMedia.data).catch(err => {console.error(err)});
-                    }
+            
+            await saveUserFile(account.pk, account.username, 'posts', post.pk, 'info.json', JSON.stringify(post, null, 4)).catch(err => reject(err));
+
+            if(post.image_versions2 != undefined){
+                let postMedia = await fetchMedia(post);
+                await saveUserFile(account.pk, account.username, 'posts', post.pk, postMedia.filename, postMedia.data).catch(err => reject(err));
+            }else if(post.carousel_media != undefined){
+                for(postPart of post.carousel_media){
+                    let postMedia = await fetchMedia(postPart);
+                    await saveUserFile(account.pk, account.username, 'posts', post.pk, postMedia.filename, postMedia.data).catch(err => reject(err));
                 }
             }
+
             postsLeft--;
+            await asyncDelay(config.delays.post);
             process.stdout.clearLine();
         }
         console.log();
-    }
+        await asyncDelay(config.delays.postsuser);
+        resolve();
+    });
+}
+
+function getSaved(userPk, type){
+    return new Promise(async (resolve, reject) => {
+        const items = await fs.promises.readdir([downloadDir, userPk, type].join('/')).catch(err =>{
+            if(err.code == 'ENOENT'){
+                resolve([]);
+            }else{
+                reject(err);
+            }
+        });
+        resolve(items);
+    });
+}
+
+function saveUserFile(userPk, username, type, contentPk, filename, data){
+    return new Promise(async (resolve, reject) => {
+        if(contentPk){
+            await fs.promises.mkdir([downloadDir, userPk, type, contentPk].join('/'), {recursive: true}).catch(err => reject(err));
+            await fs.promises.writeFile([downloadDir, userPk, username].join('/'), '').catch(err => reject(err));
+            await fs.promises.writeFile([downloadDir, userPk, type, contentPk, filename].join('/'), data).catch(err => reject(err));
+        }else{
+            await fs.promises.mkdir([downloadDir, userPk, type].join('/'), {recursive: true}).catch(err => reject(err));
+            await fs.promises.writeFile([downloadDir, userPk, username].join('/'), '').catch(err => reject(err));
+            await fs.promises.writeFile([downloadDir, userPk, type, filename].join('/'), data).catch(err => reject(err));
+        }
+        
+        resolve();
+    });
 }
 
 function getAllFollowing(pk){

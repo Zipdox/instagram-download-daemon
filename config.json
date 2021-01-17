@@ -1,0 +1,15 @@
+{
+    "cron": {
+        "stories": "0 7,10,18,21 * * *",
+        "posts": "0 22 * * *",
+        "highlights": "0 0 * * *"
+    },
+    "delays": {
+        "highlight": 500,
+        "highlightsuser": 5000,
+        "story": 500,
+        "post": 500,
+        "postsuser": 5000
+    }
+
+}
