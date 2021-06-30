@@ -48,7 +48,7 @@ var refreshHighlights;
         refreshStories = schedule.scheduleJob(config.cron.stories, checkStories);
         refreshPosts = schedule.scheduleJob(config.cron.posts, checkPosts);
         refreshHighlights = schedule.scheduleJob(config.cron.highlights, checkHighlights);
-        checkStories();
+        checkPosts();
     });
 
 })();
@@ -70,6 +70,56 @@ async function checkStories(fireDate){
 }
 
 async function checkPosts(fireDate){
+    console.log('Checking posts, scheduled for', fireDate);
+    let timelineFeed = ig.feed.timeline();
+    let upToDate = 0;
+    while(true){
+        let postsRequest = await timelineFeed.request();
+        for(let feedItem of postsRequest.feed_items){
+            await asyncDelay(config.delays.post);
+
+            if(!feedItem.media_or_ad) continue;
+            let post = feedItem.media_or_ad;
+
+            if(!post.user || !post.pk || post.product_type != 'feed') continue;
+
+            let savedPosts = await getSaved(post.user.pk, 'posts');
+
+            if(savedPosts.includes(`${post.pk}`)){
+                upToDate++;
+                break;
+            }
+
+            savedPfps = await getSaved(post.user.pk, 'pfp');
+            if(!savedPfps.includes(post.user.profile_pic_id + '.jpg')) if(post.user.profile_pic_id){
+                const userInfo = await ig.user.info(post.user.pk).catch(err => console.error(err.name, err.message));
+                if(userInfo){
+                    const pfpMedia = await fetchRawMedia(userInfo.hd_profile_pic_url_info.url);
+                    await saveUserFile(userInfo.pk, userInfo.username, 'pfp', false, userInfo.profile_pic_id + '.jpg', pfpMedia);
+                }else console.log("Can't get profile info for", post.user.username, "so skipping pfp download");
+            }
+
+            await saveUserFile(post.user.pk, post.user.username, 'posts', post.pk, 'info.json', JSON.stringify(post, null, 4));
+
+            console.log('Downloaded post', post.pk, 'from', post.user.username);
+
+            if(post.image_versions2 != undefined){
+                let postMedia = await fetchMedia(post);
+                await saveUserFile(post.user.pk, post.user.username, 'posts', post.pk, postMedia.filename, postMedia.data).catch(err => reject(err));
+            }else if(post.carousel_media != undefined){
+                for(postPart of post.carousel_media){
+                    let postMedia = await fetchMedia(postPart);
+                    await saveUserFile(post.user.pk, post.user.username, 'posts', post.pk, postMedia.filename, postMedia.data).catch(err => reject(err));
+                }
+            }
+
+        }
+        
+        if(!timelineFeed.isMoreAvailable() || upToDate >= 5) break;
+    }
+}
+
+async function checkAllPosts(fireDate){
     console.log('Checking posts, scheduled for', fireDate);
     const accountsFollowing = await getAllFollowing();
     for(account of accountsFollowing){
